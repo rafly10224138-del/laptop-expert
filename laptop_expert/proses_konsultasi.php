@@ -8,8 +8,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$kebutuhan = isset($_POST['kebutuhan']) ? (int) $_POST['kebutuhan'] : 0;
-$budget = isset($_POST['budget']) ? (int) $_POST['budget'] : 0;
+/* =========================
+   AMBIL DATA FORM
+========================= */
+
+$kebutuhan = isset($_POST['kebutuhan'])
+    ? (int) $_POST['kebutuhan']
+    : 0;
+
+$budget = isset($_POST['budget'])
+    ? (int) $_POST['budget']
+    : 0;
 
 $kategoriMap = [
     1 => 'Ringan',
@@ -17,24 +26,22 @@ $kategoriMap = [
     3 => 'Berat'
 ];
 
+/* =========================
+   VALIDASI DATA
+========================= */
+
 if (!isset($kategoriMap[$kebutuhan]) || $budget <= 0) {
     $_SESSION['pesan_error'] = 'Data konsultasi belum lengkap. Silakan isi kembali formulir.';
+
     header('Location: konsultasi.php');
     exit;
 }
 
 $kategori = $kategoriMap[$kebutuhan];
 
-/*
-|--------------------------------------------------------------------------
-| Aturan Sistem Pakar
-|--------------------------------------------------------------------------
-| Kebutuhan ringan    : menampilkan laptop kategori Ringan
-| Kebutuhan menengah  : menampilkan kategori Ringan dan Menengah
-| Kebutuhan berat     : menampilkan semua kategori
-|
-| Semua rekomendasi tetap harus memiliki harga <= budget pengguna.
-*/
+/* =========================
+   ATURAN SISTEM PAKAR
+========================= */
 
 if ($kebutuhan === 1) {
     $query = "
@@ -61,6 +68,10 @@ if ($kebutuhan === 1) {
     ";
 }
 
+/* =========================
+   AMBIL REKOMENDASI LAPTOP
+========================= */
+
 $stmt = mysqli_prepare($conn, $query);
 
 if (!$stmt) {
@@ -78,23 +89,55 @@ while ($laptop = mysqli_fetch_assoc($result)) {
     $rekomendasi[] = $laptop;
 }
 
+mysqli_stmt_close($stmt);
+
+/* =========================
+   ATURAN YANG AKTIF
+========================= */
+
 $aturanAktif = [];
 
 if ($kebutuhan === 1) {
     $aturanAktif[] = 'IF kebutuhan = Ringan AND harga laptop ≤ budget THEN laptop kategori Ringan direkomendasikan.';
-}
-
-if ($kebutuhan === 2) {
+} elseif ($kebutuhan === 2) {
     $aturanAktif[] = 'IF kebutuhan = Menengah AND harga laptop ≤ budget THEN laptop kategori Ringan atau Menengah direkomendasikan.';
-}
-
-if ($kebutuhan === 3) {
+} else {
     $aturanAktif[] = 'IF kebutuhan = Berat AND harga laptop ≤ budget THEN laptop dari semua kategori dapat direkomendasikan.';
 }
 
 if (empty($rekomendasi)) {
     $aturanAktif[] = 'Tidak ditemukan laptop dengan harga yang sesuai dengan budget yang dimasukkan.';
 }
+
+/* =========================
+   DATA HASIL KONSULTASI
+========================= */
+
+$hasilKonsultasi = [
+    'id' => uniqid('konsultasi_', true),
+    'tanggal' => date('d-m-Y H:i'),
+    'kebutuhan' => $kebutuhan,
+    'kategori' => $kategori,
+    'budget' => $budget,
+    'rekomendasi' => $rekomendasi,
+    'aturan_aktif' => $aturanAktif
+];
+
+$_SESSION['hasil_konsultasi'] = $hasilKonsultasi;
+
+/* =========================
+   SIMPAN RIWAYAT KE SESSION
+========================= */
+
+if (!isset($_SESSION['riwayat_konsultasi'])) {
+    $_SESSION['riwayat_konsultasi'] = [];
+}
+
+$_SESSION['riwayat_konsultasi'][] = $hasilKonsultasi;
+
+/* =========================
+   SIMPAN RIWAYAT KE DATABASE
+========================= */
 
 $jumlahRekomendasi = count($rekomendasi);
 
@@ -121,15 +164,9 @@ if ($stmtRiwayat) {
     mysqli_stmt_close($stmtRiwayat);
 }
 
-$_SESSION['hasil_konsultasi'] = [
-    'kebutuhan' => $kebutuhan,
-    'kategori' => $kategori,
-    'budget' => $budget,
-    'rekomendasi' => $rekomendasi,
-    'aturan_aktif' => $aturanAktif
-];
-
-mysqli_stmt_close($stmt);
+/* =========================
+   PINDAH KE HALAMAN HASIL
+========================= */
 
 header('Location: hasil.php');
 exit;
